@@ -1,0 +1,70 @@
+version: "3"
+
+services:
+  influencer:
+    image: $IMAGE/influencer:$TAG
+    build:
+      context: .
+      dockerfile: influencer/Dockerfile
+    restart: always
+    environment: &env
+      API_ENDPOINT: $API_ENDPOINT
+      LETSENCRYPT_HOST: $INFLUENCER_HOST
+      LETSENCRYPT_EMAIL: *
+      NON_WWW_HOST: $INFLUENCER_HOST
+      VIRTUAL_HOST: $INFLUENCER_HOST
+      DADATA_KEY: *
+      YANDEX_MAP: *
+      CLOUD_PAYMENTS_PUBLIC_KEY: *
+      SENTRY_DSN: *
+      BUYER_SITE: https://$BUYER_HOST
+      ENVIRONMENT: staging
+      SITE: influencer
+      LANGUAGE: $LANGUAGE
+    ports:
+      - 3001
+    networks:
+      - web
+
+  buyer:
+    image: $IMAGE/buyer:$TAG
+    build:
+      context: .
+      dockerfile: buyer/Dockerfile
+    restart: always
+    environment:
+      <<: *env
+      VIRTUAL_HOST: $BUYER_HOST
+      NON_WWW_HOST: $BUYER_HOST # без www
+      LETSENCRYPT_HOST: $BUYER_HOST
+      INFLUENCER_SITE: https://$INFLUENCER_HOST
+      SITE: buyer
+      LANGUAGE: $LANGUAGE
+    ports:
+      - 3000
+    networks:
+      - web
+
+  merchant:
+    image: $IMAGE/merchant:$TAG
+    build:
+      context: .
+      dockerfile: merchant/Dockerfile
+    restart: always
+    environment:
+      <<: *env
+      VIRTUAL_HOST: $MERCHANT_HOST
+      NON_WWW_HOST: $MERCHANT_HOST # без www
+      LETSENCRYPT_HOST: $MERCHANT_HOST
+      MERCHANT_SITE: https://$MERCHANT_HOST
+      SITE: merchant
+      LANGUAGE: $LANGUAGE
+    ports:
+      - 3002
+    networks:
+        - web
+
+networks:
+  web:
+    external:
+      name: web

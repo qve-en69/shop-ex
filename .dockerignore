@@ -1,0 +1,14 @@
+.DS_Store
+.idea
+
+node_modules
+influencer/node_modules
+buyer/node_modules
+
+.env
+buyer/.env
+influencer/.env
+
+buyer/.nuxt
+influencer/.nuxt
+

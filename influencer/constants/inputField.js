@@ -1,0 +1,4 @@
+export const NUMBER_SYMBOLS = 20
+export const NUMBER_SYMBOLS_NAME = 128
+export const NUMBER_SYMBOLS_NAME_SHOP = 128
+export const NUMBER_SYMBOLS_DESCRIPTION = 2000

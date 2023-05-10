@@ -1,0 +1,144 @@
+image: atnartur/docker:latest
+
+stages:
+  - build
+  - push
+  - deploy
+  - after_deploy
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+before_script:
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  - sed -i 's/mozilla\/DST_Root_CA_X3.crt/!mozilla\/DST_Root_CA_X3.crt/g' /etc/ca-certificates.conf
+  - update-ca-certificates
+  - export IMAGE=$CI_REGISTRY/$CI_PROJECT_PATH
+  - export TAG=latest
+  - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+  - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
+  - eval $(ssh-agent -s)
+  - echo "$PRIVATE_SSH_KEY" | tr -d '\r' | ssh-add -
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - git config --global user.email "$GITLAB_USER_EMAIL"
+  - git config --global user.name "$CI_DEPLOY_USER"
+  - ssh-keyscan -p 24 git.stride.one >> ~/.ssh/known_hosts
+  - chmod 644 ~/.ssh/known_hosts
+  - git clone ssh://*
+  - ls
+  - mkdir -p buyer/locales_to_copy $$ mkdir influencer/locales_to_copy
+  - cp -R locales/shoplio_frontend_buyer/. buyer/locales_to_copy && cp -R locales/shoplio_frontend_influencer/. influencer/locales_to_copy
+
+build:
+  stage: build
+  script:
+    - docker-compose -f docker-compose.staging.yml -p shop_shop-frontend build
+  tags:
+    - docker
+    - stride
+  only:
+    - develop
+    - master
+
+push:
+  stage: push
+  script:
+    - docker-compose -f docker-compose.staging.yml -p shop_shop-frontend push
+  tags:
+    - docker
+    - stride
+  needs:
+    - build
+  only:
+    - master
+
+deploy_staging: &deploy_staging
+  stage: deploy
+  script:
+    - docker-compose -f docker-compose.staging.yml -p $PROJECT_NAME down --remove-orphans
+    - docker-compose -f docker-compose.staging.yml -p $PROJECT_NAME up -d --force-recreate
+  environment:
+    name: staging
+    url: https://shop
+  variables:
+    API_ENDPOINT: https://api
+    PROJECT_NAME: shop_shop-frontend
+    INFLUENCER_HOST: influencer.shop
+    BUYER_HOST: shop
+    MERCHANT_HOST: merchant.shop
+    LANGUAGE: ru
+  needs:
+    - build
+  only:
+    - develop
+  tags:
+    - docker
+    - stride
+
+deploy_staging_en:
+  <<: *deploy_staging
+  stage: deploy
+  environment:
+    name: staging en
+    url: https://en.shop
+  variables:
+    API_ENDPOINT: https://api.en.shop
+    PROJECT_NAME: shop_shop_en-frontend
+    INFLUENCER_HOST: influencer.en.shop
+    BUYER_HOST: en.shop
+    MERCHANT_HOST: merchant.en.shop
+    LANGUAGE: en
+
+deploy_prod: &deploy_prod
+  stage: deploy
+  script:
+    - docker-compose -f docker-compose.prod.yml -p $PROJECT_NAME pull
+    - docker-compose -f docker-compose.prod.yml -p $PROJECT_NAME down --remove-orphans
+    - docker-compose -f docker-compose.prod.yml -p $PROJECT_NAME up -d --force-recreate
+  environment:
+    name: production
+    url: https://shop.ru
+  variables:
+    PROJECT_NAME: shop-frontend
+    LANGUAGE: ru
+  needs:
+    - push
+  only:
+    - master
+  tags:
+    - shopshop_prod
+
+deploy_prod_en:
+  <<: *deploy_prod
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - export API_ENDPOINT=$EN_API_ENDPOINT
+    - export BUYER_HOST=$EN_BUYER_HOST
+    - export INFLUENCER_HOST=$EN_INFLUENCER_HOST
+    - export BUYER_DOMAIN=$EN_BUYER_DOMAIN
+    - export INFLUENCER_DOMAIN=$EN_INFLUENCER_DOMAIN
+    - export API_DOMAIN=$EN_API_DOMAIN
+  environment:
+    name: production EN
+    url: *
+  variables:
+    PROJECT_NAME: shop_shop_en-frontend
+    LANGUAGE: en
+
+prepare_translations:
+  stage: after_deploy
+  script:
+    - buyer_container_id=$(docker ps -aqf "name=shop_shop-frontend_buyer_1")
+    - echo "$buyer_container_id"
+    - docker cp $buyer_container_id:/src/buyer/locales/ru.json buyer/locales_to_copy/ru.json
+    - influencer_container_id=$(docker ps -aqf "name=shop_shop-frontend_influencer_1")
+    - echo "$influencer_container_id"
+    - docker cp $influencer_container_id:/src/influencer/locales/ru.json influencer/locales_to_copy/ru.json
+    - curl -F "file=@influencer/locales_to_copy/ru.json" -X POST https://inside.shop/translations/download_to_transifex_0/frontend_influencer/
+    - curl -F "file=@buyer/locales_to_copy/ru.json" -X POST https://inside.shop/translations/download_to_transifex_0/frontend_buyer/
+  only:
+    refs:
+      - develop
+  tags:
+    - stride

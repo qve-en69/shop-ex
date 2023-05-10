@@ -1,0 +1,51 @@
+version: "3"
+
+services:
+  influencer:
+    image: $IMAGE/influencer:$TAG
+    build:
+      context: .
+      dockerfile: influencer/Dockerfile
+    restart: always
+    environment: &env
+      API_ENDPOINT: $API_ENDPOINT
+      LETSENCRYPT_HOST: $INFLUENCER_DOMAIN
+      LETSENCRYPT_EMAIL: $LETSENCRYPT_EMAIL
+      NON_WWW_HOST: $INFLUENCER_DOMAIN
+      VIRTUAL_HOST: $INFLUENCER_DOMAIN
+      DADATA_KEY: $DADATA_KEY
+      YANDEX_MAP: $YANDEX_MAP_KEY
+      CLOUD_PAYMENTS_PUBLIC_KEY: $CLOUD_PAYMENTS_PUBLIC_KEY
+      SENTRY_DSN: $FRONTEND_SENTRY_DSN
+      BUYER_SITE: $BUYER_HOST
+      ENVIRONMENT: $ENVIRONMENT
+      SITE: influencer
+      INTERCOM_APP_ID: $INTERCOM_APP_ID
+      LANGUAGE: $LANGUAGE
+    ports:
+      - 3001
+    networks:
+      - web
+
+  buyer:
+    image: $IMAGE/buyer:$TAG
+    build:
+      context: .
+      dockerfile: buyer/Dockerfile
+    restart: always
+    environment:
+      <<: *env
+      VIRTUAL_HOST: $BUYER_DOMAIN
+      NON_WWW_HOST: $BUYER_DOMAIN # без www
+      LETSENCRYPT_HOST: $BUYER_DOMAIN
+      INFLUENCER_SITE: $INFLUENCER_HOST
+      SITE: buyer
+    ports:
+      - 3000
+    networks:
+      - web
+
+networks:
+  web:
+    external:
+      name: web
